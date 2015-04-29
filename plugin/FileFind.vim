@@ -9,21 +9,36 @@ function! File_find_key_mappings()
     inoremap <buffer> <CR> <ESC>j:call FileFindOpenNewTab()<CR>
     nnoremap <buffer> <CR> :call FileFindOpenNewTab()<CR>
     nnoremap <buffer> T :call FileFindOpenInNewTab()<CR>
+    inoremap <buffer> <C-v> <ESC>:call FileFindOpenInSplit()<CR>
+    nnoremap <buffer> <C-v> :call FileFindOpenInSplit()<CR>
+    inoremap <buffer> <C-a> <ESC>:q<CR>
+    nnoremap <buffer> <C-a> :q<CR>
     augroup file_find_on_change
         au!
-        au TextChangedI <buffer> call FileFind()
+        au TextChangedI <buffer> call FileFindInputChanged()
     augroup END
 endfunction
 function! OpenFileFindSearch()
+    silent! call FileFindBuffer()
+    startinsert
+endfunction
+function! FileFindBuffer()
     10new
     set buftype=nofile
     set filetype=file_search
     file FileFind
-    startinsert
+endfunction
+function! FileFindInputChanged()
+    let g:file_find_last_command=getline(1)
+    call FileFind()
 endfunction
 function! FileFind()
     let a:cursor_pos = getpos(".")
     let $INPUT=getline(1)
+    if $INPUT==""
+        let $INPUT=g:file_find_last_command
+        call append(0, $INPUT)
+    endif
     :2
     silent normal! 9999dd
     exec "silent 1read !" . g:file_find_plugin_dir . "/git_find_file " . $INPUT
@@ -41,12 +56,25 @@ function! FileFind()
 endfunction
 function! FileFindOpenNewTab()
     if line(".")==1
-        call FileFind()
+        let $INPUT=getline(2)
+        if $INPUT==""
+            call FileFind()
+            return
+        endif
     else
         let $INPUT=getline(".")
-        :q
-        exec "tab drop " . substitute(system("git rev-parse --show-toplevel"), "\n", "", "") . "/" . $INPUT
     endif
+    :q
+    exec "tab new " . substitute(system("git rev-parse --show-toplevel"), "\n", "", "") . "/" . $INPUT
+endfunction
+function! FileFindOpenInSplit()
+    if line(".")==1
+        let $INPUT=getline(2)
+    else
+        let $INPUT=getline(".")
+    endif
+    :q
+    exec "vsp " . substitute(system("git rev-parse --show-toplevel"), "\n", "", "") . "/" . $INPUT
 endfunction
 function! FileFindOpenInNewTab()
     if line(".")!=1
