@@ -29,7 +29,6 @@ function! File_find_key_mappings()
     au!
     au TextChangedI <buffer> call FileFindInputChanged()
     au TextChanged <buffer> call FileFindInputChanged()
-    au BufWinLeave <buffer> bd
   augroup END
 endfunction
 function! OpenFileFindSearch()
