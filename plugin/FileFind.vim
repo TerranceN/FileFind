@@ -13,6 +13,61 @@ if has("gui")
   let g:file_find_tab_fcn = "drop"
 endif
 
+func! PreFileFind()
+  let a:cursor_pos = getpos(".")
+  :2
+  silent! :2,$d
+  return a:cursor_pos
+endfunc
+
+func! PostFileFind(cursor_pos)
+  syntax clear
+  let i = 0
+  let words = split($INPUT)
+  let colors = ["red", "27", "green", "gray"]
+  while i < len(words)
+    execute "syn match Match" . i . " \"" . words[i] . "\\V\\c\""
+    execute "hi Match" . i . " ctermfg=" . colors[i%len(colors)]
+    let i += 1
+  endwhile
+  normal! gg
+  call cursor(a:cursor_pos[1], a:cursor_pos[2])
+endfunc
+
+if v:version >= 800
+  func! JobMessageHandler(channel, msg)
+    if exists("b:fileFindJob")
+      let b:fileFindResults = b:fileFindResults + [a:msg]
+    endif
+  endfunc
+
+  func! JobFinishedHandler(channel)
+    if exists("b:fileFindJob")
+      unlet b:fileFindJob
+      if len(b:fileFindResults) > 0
+        let a:cursor_pos = PreFileFind()
+        1pu =b:fileFindResults
+        call PostFileFind(a:cursor_pos)
+        if exists("b:fileFindOnFinishFunction")
+          let $INPUT=getline(2)
+          exec "call " . b:fileFindOnFinishFunction . "($INPUT)"
+        endif
+      endif
+    endif
+  endfunc
+
+  func! StartJob(input)
+    if exists("b:fileFindJob")
+      let b:fileFindResults = []
+      let channel = job_getchannel(b:fileFindJob)
+      call ch_close(channel)
+      call job_stop(b:fileFindJob, "kill")
+    endif
+    let b:fileFindResults = []
+    let b:fileFindJob = job_start(["/bin/bash", "-c", (s:file_find_plugin_dir . "/git_find_file " . a:input)], {"out_cb": "JobMessageHandler", "close_cb": "JobFinishedHandler"})
+  endfunc
+end
+
 augroup file_find_keys
   au!
   au FileType file_search call File_find_key_mappings()
@@ -28,7 +83,7 @@ function! File_find_key_mappings()
   augroup file_find_on_change
     au!
     au TextChangedI <buffer> call FileFindInputChanged()
-    au TextChanged <buffer> call FileFindInputChanged()
+    "au TextChanged <buffer> call FileFindInputChanged()
   augroup END
 endfunction
 function! OpenFileFindSearch()
@@ -48,43 +103,56 @@ endfunction
 function! FileFind()
   let a:cursor_pos = getpos(".")
   let $INPUT=getline(1)
-  if $INPUT==""
-    let $INPUT=g:file_find_last_command
-    call append(0, $INPUT)
-  endif
-  :2
-  silent! :2,$d
-  exec "silent 1read !" . s:file_find_plugin_dir . "/git_find_file " . $INPUT
-  syntax clear
-  let i = 0
-  let words = split($INPUT)
-  let colors = ["red", "27", "green", "gray"]
-  while i < len(words)
-    execute "syn match Match" . i . " \"" . words[i] . "\\V\\c\""
-    execute "hi Match" . i . " ctermfg=" . colors[i%len(colors)]
-    let i += 1
-  endwhile
   normal! gg
   call cursor(a:cursor_pos[1], a:cursor_pos[2])
-endfunction
-function! FileFindOpenNewTab()
-  if line(".")==1
-    let $INPUT=getline(2)
-    if $INPUT==""
-      call FileFind()
-      return
-    endif
+  if v:version >= 800
+    call StartJob($INPUT)
   else
-    let $INPUT=getline(".")
+    let a:cursor_pos = PreFileFind()
+    exec "silent 1read !" . s:file_find_plugin_dir . "/git_find_file " . $INPUT
+    call PostFileFind(a:cursor_pos)
+  endif
+endfunction
+func! FileFindOpenTabForInput(input)
+  if a:input == ""
+    return
   endif
   :q
   if g:file_find_tab_move
     tabm +99999
   endif
-  exec "tab ". g:file_find_tab_fcn . " " . substitute(system("git rev-parse --show-toplevel"), "\n", "", "") . "/" . $INPUT
+  exec "tab ". g:file_find_tab_fcn . " " . substitute(system("git rev-parse --show-toplevel"), "\n", "", "") . "/" . a:input
   if g:file_find_tab_move
     tabm +99999
   endif
+endfunc
+function! FileFindOpenNewTab()
+  if line(".")==1
+    if line('$') > 1
+      let $INPUT=getline(2)
+      if $INPUT==""
+        let $INPUT=getline(1)
+        if $INPUT==""
+          let $INPUT=g:file_find_last_command
+          call append(0, $INPUT)
+          normal! gg
+        endif
+        call FileFind()
+        return
+      endif
+    endif
+  else
+    let $INPUT=getline(".")
+  endif
+  if exists("b:fileFindJob")
+    let b:fileFindOnFinishFunction = 'FileFindOpenTabForInput'
+  else
+    call FileFindOpenTabForInput($INPUT)
+  endif
+endfunction
+function! FileFindOpenInSplitForInput(input)
+  :q
+  exec "vsp " . substitute(system("git rev-parse --show-toplevel"), "\n", "", "") . "/" . a:input
 endfunction
 function! FileFindOpenInSplit()
   if line(".")==1
@@ -92,13 +160,25 @@ function! FileFindOpenInSplit()
   else
     let $INPUT=getline(".")
   endif
+  if exists("b:fileFindJob")
+    let b:fileFindOnFinishFunction = 'FileFindOpenInSplitForInput'
+  else
+    call FileFindOpenInSplitForInput($INPUT)
+  endif
+endfunction
+function! FileFindOverwriteForInput(input)
   :q
-  exec "vsp " . substitute(system("git rev-parse --show-toplevel"), "\n", "", "") . "/" . $INPUT
+  exec ":e " . substitute(system("git rev-parse --show-toplevel"), "\n", "", "") . "/" . $INPUT
 endfunction
 function! FileFindOverwrite()
-  if line(".")!=1
+  if line(".")==1
+    let $INPUT=getline(2)
+  else
     let $INPUT=getline(".")
-    :q
-    exec ":e " . substitute(system("git rev-parse --show-toplevel"), "\n "", "") . "/" . $INPUT
+  endif
+  if exists("b:fileFindJob")
+    let b:fileFindOnFinishFunction = 'FileFindOverwriteForInput'
+  else
+    call FileFindOverwriteForInput($INPUT)
   endif
 endfunction
