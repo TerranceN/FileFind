@@ -35,13 +35,13 @@ func! PostFileFind(cursor_pos)
 endfunc
 
 if v:version >= 800
-  func! JobMessageHandler(channel, msg)
+  func! FileFindJobMessageHandler(channel, msg)
     if exists("b:fileFindJob")
       let b:fileFindResults = b:fileFindResults + [a:msg]
     endif
   endfunc
 
-  func! JobFinishedHandler(channel)
+  func! FileFindJobFinishedHandler(channel)
     if exists("b:fileFindJob")
       unlet b:fileFindJob
       if len(b:fileFindResults) > 0
@@ -56,7 +56,7 @@ if v:version >= 800
     endif
   endfunc
 
-  func! StartJob(input)
+  func! FileFindStartJob(input)
     if exists("b:fileFindJob")
       let b:fileFindResults = []
       let channel = job_getchannel(b:fileFindJob)
@@ -64,7 +64,7 @@ if v:version >= 800
       call job_stop(b:fileFindJob, "kill")
     endif
     let b:fileFindResults = []
-    let b:fileFindJob = job_start(["/bin/bash", "-c", (s:file_find_plugin_dir . "/git_find_file " . a:input)], {"out_cb": "JobMessageHandler", "close_cb": "JobFinishedHandler"})
+    let b:fileFindJob = job_start(["/bin/bash", "-c", (s:file_find_plugin_dir . "/git_find_file " . a:input)], {"out_cb": "FileFindJobMessageHandler", "close_cb": "FileFindJobFinishedHandler"})
   endfunc
 end
 
@@ -106,7 +106,7 @@ function! FileFind()
   normal! gg
   call cursor(a:cursor_pos[1], a:cursor_pos[2])
   if v:version >= 800
-    call StartJob($INPUT)
+    call FileFindStartJob($INPUT)
   else
     let a:cursor_pos = PreFileFind()
     exec "silent 1read !" . s:file_find_plugin_dir . "/git_find_file " . $INPUT
@@ -132,11 +132,13 @@ function! FileFindOpenNewTab()
       let $INPUT=getline(2)
       if $INPUT==""
         let $INPUT=getline(1)
-        if $INPUT==""
-          let $INPUT=g:file_find_last_command
-          call append(0, $INPUT)
-          normal! gg
-        endif
+      endif
+    else
+      let $INPUT=getline(1)
+      if $INPUT==""
+        let $INPUT=g:file_find_last_command
+        call append(0, $INPUT)
+        normal! gg
         call FileFind()
         return
       endif
