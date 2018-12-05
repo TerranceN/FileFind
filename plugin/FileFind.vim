@@ -15,8 +15,7 @@ endif
 
 func! PreFileFind()
   let a:cursor_pos = getpos(".")
-  :2
-  silent! :2,$d
+  normal ggjVG"_d
   return a:cursor_pos
 endfunc
 
@@ -46,7 +45,7 @@ if v:version >= 800
       unlet b:fileFindJob
       if len(b:fileFindResults) > 0
         let a:cursor_pos = PreFileFind()
-        1pu =b:fileFindResults
+        1pu=b:fileFindResults
         call PostFileFind(a:cursor_pos)
         if exists("b:fileFindOnFinishFunction")
           let $INPUT=getline(2)
@@ -64,7 +63,7 @@ if v:version >= 800
       call job_stop(b:fileFindJob, "kill")
     endif
     let b:fileFindResults = []
-    let b:fileFindJob = job_start(["/bin/bash", "-c", (s:file_find_plugin_dir . "/git_find_file " . a:input)], {"out_cb": "FileFindJobMessageHandler", "close_cb": "FileFindJobFinishedHandler"})
+    let b:fileFindJob = job_start(["/bin/bash", "-c", (s:file_find_plugin_dir . "/git_find_file " . a:input . " | head -n 200")], {"out_cb": "FileFindJobMessageHandler", "close_cb": "FileFindJobFinishedHandler"})
   endfunc
 end
 
@@ -73,7 +72,8 @@ augroup file_find_keys
   au FileType file_search call File_find_key_mappings()
 augroup END
 function! File_find_key_mappings()
-  nnoremap <buffer> <leader><CR> :call FileFindOverwrite()<CR>
+  inoremap <buffer> <C-\> <ESC>:call FileFindOverwrite()<CR>
+  nnoremap <buffer> <C-\> :call FileFindOverwrite()<CR>
   inoremap <buffer> <CR> <ESC>:call FileFindOpenNewTab()<CR>
   nnoremap <buffer> <CR> :call FileFindOpenNewTab()<CR>
   inoremap <buffer> <C-v> <ESC>:call FileFindOpenInSplit()<CR>
@@ -109,7 +109,7 @@ function! FileFind()
     call FileFindStartJob($INPUT)
   else
     let a:cursor_pos = PreFileFind()
-    exec "silent 1read !" . s:file_find_plugin_dir . "/git_find_file " . $INPUT
+    exec "silent 1read !" . s:file_find_plugin_dir . "/git_find_file " . $INPUT . " | head -n 200
     call PostFileFind(a:cursor_pos)
   endif
 endfunction
@@ -119,11 +119,11 @@ func! FileFindOpenTabForInput(input)
   endif
   :q
   if g:file_find_tab_move
-    tabm +99999
+    tabmove
   endif
   exec "tab ". g:file_find_tab_fcn . " " . substitute(system("git rev-parse --show-toplevel"), "\n", "", "") . "/" . a:input
   if g:file_find_tab_move
-    tabm +99999
+    tabmove
   endif
 endfunc
 function! FileFindOpenNewTab()
@@ -154,6 +154,7 @@ function! FileFindOpenNewTab()
 endfunction
 function! FileFindOpenInSplitForInput(input)
   :q
+  set splitright
   exec "vsp " . substitute(system("git rev-parse --show-toplevel"), "\n", "", "") . "/" . a:input
 endfunction
 function! FileFindOpenInSplit()
